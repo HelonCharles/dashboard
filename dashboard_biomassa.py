@@ -12,51 +12,51 @@ st.markdown("---")
 # 2. Carregamento dos Dados
 @st.cache_data
 def carregar_dados():
-    # O arquivo deve estar na mesma pasta que o script
     gdf = gpd.read_file("dados_auditoria.geojson")
+    if gdf.crs != "EPSG:4326":
+        gdf = gdf.to_crs("EPSG:4326")
     return gdf
 
 try:
     data = carregar_dados()
 
-    # 3. Painel Lateral de Filtros
+    # 3. Painel Lateral
     with st.sidebar:
         st.header("🔍 Painel de Controle")
-        # Seleção do ano
         ano = st.selectbox("Selecione o Ano de Auditoria", ["2022", "2023", "2024", "2025"])
-        
-        # Definição dinâmica das colunas conforme o seu GeoJSON (usando '2022', etc)
         col_exp = f"exploracao_{ano}" 
         col_saldo = f"saldo_{ano}"
         
-        st.success(f"Dados conectados: {ano}")
+        st.markdown("---")
+        st.subheader("🎯 Focar em Talhão")
+        lista_talhoes = sorted(data['fid'].unique().tolist())
+        talhao_selecionado = st.selectbox("Escolha o ID para Inspeção", ["Visão Geral"] + lista_talhoes)
 
-    # 4. Cálculo e Exibição de Indicadores (KPIs)
-    st.subheader(f"📊 Resumo Operacional - Ano {ano}")
-    
-    # Cálculos globais
+        # DEFINIÇÃO RÍGIDA DE COORDENADAS
+        if talhao_selecionado != "Visão Geral":
+            geom = data[data['fid'] == talhao_selecionado].geometry.centroid.iloc[0]
+            lat, lon, zoom = geom.y, geom.x, 16
+        else:
+            lat, lon, zoom = 2.82, -60.67, 12
+
+    # 4. KPIs (Seu cálculo original)
     total_original = data['mudas_2020'].sum()
     saldo_atual = data[col_saldo].sum()
     extraido = total_original - saldo_atual
     progresso = (extraido / total_original) * 100
 
     c1, c2, c3 = st.columns(3)
-    
-    # Exibição com formatação brasileira (ponto como separador de milhar)
     c1.metric("Estoque Inicial (2020)", f"{total_original:,.0f}".replace(",", "."))
-    c2.metric("Saldo Remanescente", f"{saldo_atual:,.0f}".replace(",", "."), 
-              delta=f"-{extraido:,.0f}", delta_color="inverse")
+    c2.metric("Saldo Remanescente", f"{saldo_atual:,.0f}".replace(",", "."), delta=f"-{extraido:,.0f}", delta_color="inverse")
     c3.metric("Progresso da Extração", f"{progresso:.1f}%")
 
     st.markdown("---")
 
-    # 5. Mapa Interativo (Visualização Espacial)
-    st.subheader("🗺️ Visualização dos Talhões")
+    # 5. Visualização Espacial (O truque da KEY ÚNICA)
+    st.subheader(f"🗺️ Mapa: {talhao_selecionado} ({ano})")
     
-    # Criar o mapa base
-    m = leafmap.Map(center=[2.82, -60.67], zoom=12, google_map="SATELLITE")
+    m = leafmap.Map(center=[lat, lon], zoom=zoom, google_map="SATELLITE")
 
-    # Adicionar os dados com esquema 'UserDefined' (sem underline)
     m.add_data(
         data,
         column=col_exp,
@@ -68,36 +68,23 @@ try:
         aliases=["ID Talhão", "Mudas 2020", "Saldo Atual", "% Extraído"]
     )
 
-    # Renderização via buffer para evitar WinError 32 no Windows
-    st_folium(m, width=1200, height=600, returned_objects=[])
+    # A KEY abaixo é o que impede o mapa de "voltar para a origem"
+    # Toda vez que você muda o ano ou o talhão, o Streamlit cria um mapa "novo"
+    st_folium(
+        m, 
+        key=f"map_instance_{ano}_{talhao_selecionado}", 
+        width=1200, 
+        height=600,
+        returned_objects=[] # Ignoramos o retorno para não gerar loops
+    )
 
     # 6. Relatório Detalhado (Tabela)
     st.markdown("---")
     st.subheader("📋 Detalhamento dos Dados")
-    
-    # Seleção segura de colunas
     colunas_tabela = ['fid', 'mudas_2020', col_saldo, col_exp]
     df_tabela = data[colunas_tabela].copy()
-    
-    # Renomear para exibição amigável
     df_tabela.columns = ['ID Talhão', 'Mudas (2020)', 'Saldo Atual', '% Extração']
-    
-    # Exibir a tabela ordenada pelos mais explorados
-    st.dataframe(
-        df_tabela.sort_values(by='% Extração', ascending=False), 
-        use_container_width=True, 
-        hide_index=True
-    )
-
-    # Botão para download do relatório
-    csv = df_tabela.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Baixar Relatório (CSV)",
-        data=csv,
-        file_name=f"auditoria_roraima_{ano}.csv",
-        mime="text/csv",
-    )
+    st.dataframe(df_tabela.sort_values(by='% Extração', ascending=False), use_container_width=True, hide_index=True)
 
 except Exception as e:
-    st.error(f"⚠️ Erro ao processar os dados: {e}")
-    st.info("Dica: Verifique se as colunas 'fid', 'mudas_2020', 'exploracao_2022' e 'saldo_2022' existem no seu GeoJSON.")
+    st.error(f"⚠️ Erro: {e}")
