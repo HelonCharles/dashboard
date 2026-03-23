@@ -17,6 +17,14 @@ def carregar_dados():
         gdf = gdf.to_crs("EPSG:4326")
     return gdf
 
+# Inicializar estado do mapa na sessão
+if 'map_state' not in st.session_state:
+    st.session_state.map_state = {
+        'center': [2.82, -60.67],
+        'zoom': 12,
+        'bounds': None
+    }
+
 try:
     data = carregar_dados()
 
@@ -31,15 +39,25 @@ try:
         st.subheader("🎯 Focar em Talhão")
         lista_talhoes = sorted(data['fid'].unique().tolist())
         talhao_selecionado = st.selectbox("Escolha o ID para Inspeção", ["Visão Geral"] + lista_talhoes)
+        
+        # Botão para resetar o mapa
+        if st.button("🔄 Resetar Visualização do Mapa"):
+            st.session_state.map_state = {
+                'center': [2.82, -60.67],
+                'zoom': 12,
+                'bounds': None
+            }
+            st.rerun()
 
-        # DEFINIÇÃO RÍGIDA DE COORDENADAS
+        # Botão para focar no talhão selecionado (opcional)
         if talhao_selecionado != "Visão Geral":
-            geom = data[data['fid'] == talhao_selecionado].geometry.centroid.iloc[0]
-            lat, lon, zoom = geom.y, geom.x, 16
-        else:
-            lat, lon, zoom = 2.82, -60.67, 12
+            if st.button("🎯 Centralizar no Talhão"):
+                geom = data[data['fid'] == talhao_selecionado].geometry.centroid.iloc[0]
+                st.session_state.map_state['center'] = [geom.y, geom.x]
+                st.session_state.map_state['zoom'] = 16
+                st.rerun()
 
-    # 4. KPIs (Seu cálculo original)
+    # 4. KPIs
     total_original = data['mudas_2020'].sum()
     saldo_atual = data[col_saldo].sum()
     extraido = total_original - saldo_atual
@@ -52,11 +70,18 @@ try:
 
     st.markdown("---")
 
-    # 5. Visualização Espacial (O truque da KEY ÚNICA)
+    # 5. Visualização Espacial
     st.subheader(f"🗺️ Mapa: {talhao_selecionado} ({ano})")
     
-    m = leafmap.Map(center=[lat, lon], zoom=zoom, google_map="SATELLITE")
+    # Determinar centro e zoom baseado no estado salvo
+    # Mas se mudou o talhão via filtro, mantém o estado atual
+    center = st.session_state.map_state['center']
+    zoom = st.session_state.map_state['zoom']
+    
+    # Criar mapa
+    m = leafmap.Map(center=center, zoom=zoom, google_map="SATELLITE")
 
+    # Adicionar dados ao mapa
     m.add_data(
         data,
         column=col_exp,
@@ -68,23 +93,76 @@ try:
         aliases=["ID Talhão", "Mudas 2020", "Saldo Atual", "% Extraído"]
     )
 
-    # A KEY abaixo é o que impede o mapa de "voltar para a origem"
-    # Toda vez que você muda o ano ou o talhão, o Streamlit cria um mapa "novo"
-    st_folium(
+    # Se houver um talhão específico selecionado e o usuário não está usando o controle manual,
+    # podemos adicionar um marcador destacado
+    if talhao_selecionado != "Visão Geral":
+        geom_talhao = data[data['fid'] == talhao_selecionado].geometry.iloc[0]
+        # Criar um estilo destacado para o polígono selecionado
+        m.add_gdf(
+            gpd.GeoDataFrame(geometry=[geom_talhao], crs="EPSG:4326"),
+            style={"color": "yellow", "weight": 4, "fillOpacity": 0.1},
+            layer_name=f"Talhão {talhao_selecionado} (Destacado)"
+        )
+        
+        # Adicionar um popup com informações
+        row = data[data['fid'] == talhao_selecionado].iloc[0]
+        popup_html = f"""
+        <div style="font-family: monospace;">
+            <b>ID Talhão:</b> {talhao_selecionado}<br>
+            <b>Mudas 2020:</b> {row['mudas_2020']:,.0f}<br>
+            <b>Saldo {ano}:</b> {row[col_saldo]:,.0f}<br>
+            <b>% Extração:</b> {row[col_exp]:.1f}%
+        </div>
+        """
+        
+        # Adicionar marcador no centro do polígono
+        centroid = geom_talhao.centroid
+        m.add_marker([centroid.y, centroid.x], popup=popup_html)
+
+    # Exibir mapa e capturar interações
+    output = st_folium(
         m, 
         key=f"map_instance_{ano}_{talhao_selecionado}", 
         width=1200, 
         height=600,
-        returned_objects=[] # Ignoramos o retorno para não gerar loops
+        returned_objects=["last_center", "last_bounds", "last_zoom"]
     )
-
-    # 6. Relatório Detalhado (Tabela)
+    
+    # Atualizar o estado do mapa baseado nas interações do usuário
+    if output and output.get('last_center') and output.get('last_zoom'):
+        # Verificar se houve mudança significativa (evita loops)
+        new_center = [output['last_center']['lat'], output['last_center']['lng']]
+        new_zoom = output['last_zoom']
+        
+        # Atualizar estado apenas se o centro ou zoom mudaram
+        if (new_center != st.session_state.map_state['center'] or 
+            new_zoom != st.session_state.map_state['zoom']):
+            st.session_state.map_state['center'] = new_center
+            st.session_state.map_state['zoom'] = new_zoom
+            
+            # Se houver bounds, salvar também
+            if output.get('last_bounds'):
+                st.session_state.map_state['bounds'] = output['last_bounds']
+    
+    # 6. Relatório Detalhado
     st.markdown("---")
     st.subheader("📋 Detalhamento dos Dados")
     colunas_tabela = ['fid', 'mudas_2020', col_saldo, col_exp]
     df_tabela = data[colunas_tabela].copy()
     df_tabela.columns = ['ID Talhão', 'Mudas (2020)', 'Saldo Atual', '% Extração']
     st.dataframe(df_tabela.sort_values(by='% Extração', ascending=False), use_container_width=True, hide_index=True)
+    
+    # Opção para exportar dados
+    st.markdown("---")
+    if st.button("📊 Exportar Dados para CSV"):
+        csv = df_tabela.to_csv(index=False)
+        st.download_button(
+            label="Download CSV",
+            data=csv,
+            file_name=f"biotrack_dados_{ano}.csv",
+            mime="text/csv"
+        )
 
 except Exception as e:
     st.error(f"⚠️ Erro: {e}")
+    st.exception(e)
