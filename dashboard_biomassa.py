@@ -258,40 +258,35 @@ try:
     colunas_tabela = ['fid', 'mudas_2020', col_saldo, col_exp]
     df_tabela = data[colunas_tabela].copy()
     df_tabela.columns = ['ID Talhão', 'Mudas (2020)', 'Saldo Atual', '% Extração']
-    df_tabela = df_tabela.sort_values(by='% Extração', ascending=False)
     
-    # Adicionar coluna de status para color coding
-    def get_status_color(perc):
-        if perc >= 70:
-            return 'background-color: #ffcccc'  # Vermelho claro
-        elif perc >= 30:
-            return 'background-color: #ffffcc'  # Amarelo claro
-        else:
-            return 'background-color: #ccffcc'  # Verde claro
+    # ORDENAÇÃO: Se houver talhão selecionado, ele aparece no TOPO da tabela
+    if talhao_selecionado != "Visão Geral":
+        df_tabela['is_selected'] = df_tabela['ID Talhão'].apply(lambda x: 1 if str(x) == str(talhao_selecionado) else 0)
+        df_tabela = df_tabela.sort_values(by=['is_selected', '% Extração'], ascending=[False, False]).drop(columns=['is_selected'])
+    else:
+        df_tabela = df_tabela.sort_values(by='% Extração', ascending=False)
     
-    # Função para destacar linha selecionada
+    # Função para destacar linha selecionada com COR FORTE (Amarelo Vivo)
     def highlight_selected(row):
-        if talhao_selecionado != "Visão Geral" and row['ID Talhão'] == talhao_selecionado:
-            return ['background-color: #ffeb3b; font-weight: bold'] * len(row)
-        # Aplicar cores baseadas na extração
-        elif row['% Extração'] >= 70:
-            return ['background-color: #ffcccc'] * len(row)
+        # Convertemos ambos para string para garantir a comparação
+        if talhao_selecionado != "Visão Geral" and str(row['ID Talhão']) == str(talhao_selecionado):
+            return ['background-color: #FAFF00; color: black; font-weight: bold; border: 2px solid black'] * len(row)
+        
+        # Cores suaves para os demais
+        if row['% Extração'] >= 70:
+            return ['background-color: #FFCDD2; color: black'] * len(row) # Vermelho suave
         elif row['% Extração'] >= 30:
-            return ['background-color: #ffffcc'] * len(row)
+            return ['background-color: #FFF9C4; color: black'] * len(row) # Amarelo suave
         else:
-            return ['background-color: #ccffcc'] * len(row)
-    
-    # Aplicar estilos à tabela
-    styled_df = df_tabela.style.apply(highlight_selected, axis=1)
-    styled_df = styled_df.format({
-        'Mudas (2020)': '{:,.0f}',
-        'Saldo Atual': '{:,.0f}',
-        '% Extração': '{:.1f}%'
-    })
+            return ['background-color: #C8E6C9; color: black'] * len(row) # Verde suave
     
     # Exibir tabela estilizada
     st.dataframe(
-        styled_df,
+        df_tabela.style.apply(highlight_selected, axis=1).format({
+            'Mudas (2020)': '{:,.0f}',
+            'Saldo Atual': '{:,.0f}',
+            '% Extração': '{:.1f}%'
+        }),
         use_container_width=True,
         hide_index=True,
         height=400
