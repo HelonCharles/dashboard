@@ -19,6 +19,8 @@ def carregar_dados():
     gdf = gpd.read_file("dados_auditoria.geojson")
     if gdf.crs != "EPSG:4326":
         gdf = gdf.to_crs("EPSG:4326")
+    # Converter fid para string para garantir consistência
+    gdf['fid'] = gdf['fid'].astype(str)
     return gdf
 
 # Inicializar estado do mapa na sessão
@@ -29,9 +31,9 @@ if 'map_state' not in st.session_state:
         'bounds': None
     }
 
-# Inicializar estado do talhão selecionado para hover
-if 'hover_talhao' not in st.session_state:
-    st.session_state.hover_talhao = None
+# Inicializar estado do talhão selecionado
+if 'selected_talhao' not in st.session_state:
+    st.session_state.selected_talhao = "Visão Geral"
 
 try:
     data = carregar_dados()
@@ -47,6 +49,11 @@ try:
         st.subheader("🎯 Focar em Talhão")
         lista_talhoes = sorted(data['fid'].unique().tolist())
         talhao_selecionado = st.selectbox("Escolha o ID para Inspeção", ["Visão Geral"] + lista_talhoes)
+        
+        # Atualizar estado do talhão selecionado
+        if talhao_selecionado != st.session_state.selected_talhao:
+            st.session_state.selected_talhao = talhao_selecionado
+            st.rerun()
         
         # Botão para resetar o mapa
         if st.button("🔄 Resetar Visualização do Mapa"):
@@ -239,16 +246,6 @@ try:
             
             if output.get('last_bounds'):
                 st.session_state.map_state['bounds'] = output['last_bounds']
-    
-    # Capturar clique no mapa e atualizar seleção se for um talhão
-    if output and output.get('last_object_clicked'):
-        clicked_data = output['last_object_clicked']
-        # Aqui você precisaria implementar a lógica para identificar qual talhão foi clicado
-        # Isso depende de como o leafmap retorna os dados. Um exemplo simplificado:
-        if 'id' in clicked_data:
-            clicked_id = clicked_data['id']
-            # Se o ID clicado for um talhão válido, atualizar a seleção
-            # Nota: Isso requer que os IDs dos polígonos sejam configurados corretamente
 
     # 7. Relatório Detalhado com Destaque do Talhão Selecionado
     st.markdown("---")
@@ -260,18 +257,13 @@ try:
     df_tabela.columns = ['ID Talhão', 'Mudas (2020)', 'Saldo Atual', '% Extração']
     df_tabela = df_tabela.sort_values(by='% Extração', ascending=False)
     
-    # Adicionar coluna de status para color coding
-    def get_status_color(perc):
-        if perc >= 70:
-            return 'background-color: #ffcccc'  # Vermelho claro
-        elif perc >= 30:
-            return 'background-color: #ffffcc'  # Amarelo claro
-        else:
-            return 'background-color: #ccffcc'  # Verde claro
+    # Garantir que os IDs estão como string para comparação correta
+    df_tabela['ID Talhão'] = df_tabela['ID Talhão'].astype(str)
     
     # Função para destacar linha selecionada
     def highlight_selected(row):
-        if talhao_selecionado != "Visão Geral" and row['ID Talhão'] == talhao_selecionado:
+        # Verificar se é o talhão selecionado (comparação como string)
+        if talhao_selecionado != "Visão Geral" and str(row['ID Talhão']) == str(talhao_selecionado):
             return ['background-color: #ffeb3b; font-weight: bold'] * len(row)
         # Aplicar cores baseadas na extração
         elif row['% Extração'] >= 70:
@@ -337,7 +329,7 @@ try:
                 f"{(talhoes_normais/len(df_tabela)*100):.1f}% do total"
             )
         
-        # Adicionar gráfico de distribuição (opcional, se tiver plotly)
+        # Adicionar gráfico de distribuição
         st.markdown("### Distribuição da Extração")
         st.bar_chart(df_tabela.set_index('ID Talhão')['% Extração'])
 
