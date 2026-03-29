@@ -328,16 +328,17 @@ try:
                 idx = idx_list[0]
                 start = max(0, idx - 5)
                 end = min(len(df_grafico), idx + 5)
-                df_zoom = df_grafico.iloc[start:end]
+                df_zoom = df_grafico.iloc[start:end].copy()
+                
                 if id_selecionado_str not in df_zoom['fid_str'].values:
                     df_zoom = pd.concat([df_zoom, df_grafico[df_grafico['fid_str'] == id_selecionado_str]])
             else:
-                df_zoom = df_grafico
+                df_zoom = df_grafico.copy()
         else:
             df_grafico['Destaque'] = 'Todos'
-            df_zoom = df_grafico
+            df_zoom = df_grafico.copy()
 
-        # Gráfico de Barras
+        # Criar Gráfico de Barras
         fig_bar = px.bar(
             df_zoom, 
             x='fid_str', 
@@ -348,64 +349,51 @@ try:
                 'Outros Talhões': '#A0A0A0', 
                 'Todos': '#0083B8'
             },
-            category_orders={'Destaque': ['Selecionado', 'Outros Talhões', 'Todos']}
+            category_orders={'fid_str': df_zoom['fid_str'].tolist()}
         )
+
+        # ADICIONAR ANOTAÇÃO (Vínculo dinâmico ao eixo X e Y)
+        if talhao_selecionado != "Visão Geral":
+            try:
+                valor_y = df_zoom.loc[df_zoom['fid_str'] == id_selecionado_str, col_exp].values[0]
+                fig_bar.add_annotation(
+                    x=id_selecionado_str, 
+                    y=valor_y,
+                    text="🎯 SELECIONADO",
+                    showarrow=True,
+                    arrowhead=2,
+                    ax=0,
+                    ay=-40,
+                    bgcolor="#FAFF00",
+                    bordercolor="black",
+                    font=dict(color="black", size=12, weight="bold"),
+                    xref="x", # O pulo do gato: refere-se ao valor do eixo X
+                    yref="y"  # Refere-se ao valor do eixo Y
+                )
+            except:
+                pass
 
         fig_bar.update_layout(
             showlegend=False,
             height=400,
-            xaxis_type='category',
             xaxis_title="ID do Talhão",
             yaxis_title="% de Consumo",
+            xaxis={'type': 'category'},
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             margin=dict(l=10, r=10, t=10, b=10)
         )
-#---------------------------------------------------------------------------------------------
-        # Anotação e borda no selecionado
-        # if talhao_selecionado != "Visão Geral":
-            # valor_sel = df_zoom.loc[df_zoom['fid_str'] == id_selecionado_str, col_exp].values[0]
-            # fig_bar.add_annotation(
-                # x=id_selecionado_str, y=valor_sel, text="🎯 Selecionado",
-                # showarrow=True, arrowhead=2, ay=-40, bgcolor="#FAFF00"
-            # )
-            #----------------------------------------------------------------------------------
-        # Anotação Dinâmica que acompanha o Zoom
-        if talhao_selecionado != "Visão Geral":
-            # 1. Pegar o valor exato para o eixo Y
-            filtro_sel = df_zoom.loc[df_zoom['fid_str'] == id_selecionado_str, col_exp]
-            
-            if not filtro_sel.empty:
-                valor_sel = filtro_sel.values[0]
-                
-                # 2. Adicionar a anotação vinculada ao ID do talhão
-                fig_bar.add_annotation(
-                    x=id_selecionado_str,  # O ID exato no eixo X
-                    y=valor_sel,           # A altura exata da barra
-                    text="🎯 Selecionado",
-                    showarrow=True,
-                    arrowhead=2,
-                    arrowsize=1,
-                    arrowwidth=2,
-                    arrowcolor="#000000",
-                    ax=0,
-                    ay=-40,                # Posição vertical (acima da barra)
-                    font=dict(color="black", size=12, family="Arial"),
-                    bgcolor="#FAFF00",     # Fundo Amarelo
-                    bordercolor="black",
-                    borderwidth=1,
-                    opacity=0.9
-                )
 
-        
-            #----------------------------------------------------------------------------------
-            fig_bar.update_traces(marker_line_color="black", 
-                                 marker_line_width=2, 
-                                 selector=dict(name="Selecionado"))
+        # Borda preta na barra amarela (seletor por cor)
+        fig_bar.update_traces(
+            marker_line_color="black", 
+            marker_line_width=2, 
+            selector=dict(marker_color='#FAFF00')
+        )
 
         st.plotly_chart(fig_bar, use_container_width=True)
 
-        # --- NOVO: GRÁFICO DE LINHAS (EVOLUÇÃO TEMPORAL) ---
+        # --- GRÁFICO DE LINHAS (HISTÓRICO) ---
         if talhao_selecionado != "Visão Geral":
             st.markdown("---")
             st.subheader(f"📉 Histórico de Exploração: Talhão {talhao_selecionado}")
@@ -437,6 +425,12 @@ try:
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)'
             )
+
+            st.plotly_chart(fig_line, use_container_width=True)
+
+except Exception as e:
+    st.error(f"⚠️ Erro ao carregar dashboard: {e}")
+    st.exception(e)
 
             st.plotly_chart(fig_line, use_container_width=True)
 
