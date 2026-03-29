@@ -306,15 +306,15 @@ try:
         col_m1, col_m2, col_m3 = st.columns(3)
         
         with col_m1:
-            criticos = len(df_tabela[df_tabela['%Consumo'] >= 70])
+            criticos = len(df_tabela[df_tabela['% Consumo'] >= 70])
             st.metric("Talhões com Alto Consumo", criticos, f"{(criticos/len(df_tabela)*100):.1f}%", delta_color="inverse")
         
         with col_m2:
-            atencao = len(df_tabela[(df_tabela['%Consumo'] >= 30) & (df_tabela['%Consumo'] < 70)])
+            atencao = len(df_tabela[(df_tabela['% Consumo'] >= 30) & (df_tabela['% Consumo'] < 70)])
             st.metric("Talhões com Consumo Moderado", atencao, f"{(atencao/len(df_tabela)*100):.1f}%")
         
         with col_m3:
-            normais = len(df_tabela[df_tabela['%Consumo'] < 30])
+            normais = len(df_tabela[df_tabela['% Consumo'] < 30])
             st.metric("Talhões com Baixo Consumo", normais, f"{(normais/len(df_tabela)*100):.1f}%")
 
         st.markdown("---")
@@ -331,10 +331,10 @@ try:
         fig = px.bar(
             df_grafico, 
             x='ID Talhão', 
-            y='%Consumo',
+            y='% Consumo',
             color='Destaque',
             color_discrete_map={'Selecionado': '#FAFF00', 'Outros': '#A0A0A0'},
-            category_orders={"ID Talhão": df_grafico.sort_values('%Consumo', ascending=False)['ID Talhão'].tolist()}
+            category_orders={"ID Talhão": df_grafico.sort_values('% Consumo', ascending=False)['ID Talhão'].tolist()}
         )
 
         fig.update_layout(
