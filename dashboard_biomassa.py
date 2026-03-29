@@ -252,21 +252,17 @@ try:
     st.markdown("---")
     st.subheader("📋 Relatório de Consumo por Talhão")
     
-    # Criamos uma cópia para a tabela sem estragar os nomes originais das colunas
     df_tabela = data[['fid', 'mudas_2020', col_saldo, col_exp]].copy()
     
-    # Ordenação lógica
     if talhao_selecionado != "Visão Geral":
         df_tabela['is_selected'] = df_tabela['fid'].apply(lambda x: 1 if str(x) == str(talhao_selecionado) else 0)
         df_tabela = df_tabela.sort_values(by=['is_selected', col_exp], ascending=[False, False]).drop(columns=['is_selected'])
     else:
         df_tabela = df_tabela.sort_values(by=col_exp, ascending=False)
     
-    # Função de destaque (usando os nomes técnicos das colunas para evitar erro de chave)
     def highlight_selected(row):
         if talhao_selecionado != "Visão Geral" and str(row['fid']) == str(talhao_selecionado):
             return ['background-color: #FAFF00; color: black; font-weight: bold; border: 2px solid black'] * len(row)
-        
         if row[col_exp] >= 70:
             return ['background-color: #FFCDD2; color: black'] * len(row)
         elif row[col_exp] >= 30:
@@ -274,7 +270,6 @@ try:
         else:
             return ['background-color: #C8E6C9; color: black'] * len(row)
     
-    # Exibição da Tabela - Aqui renomeamos apenas visualmente com o dicionário 'columns'
     st.dataframe(
         df_tabela.style.apply(highlight_selected, axis=1).format({
             'mudas_2020': '{:,.0f}',
@@ -312,7 +307,6 @@ try:
         st.markdown("---")
         st.subheader(f"📈 Ranking de Consumo - Foco: {talhao_selecionado}")
 
-        # --- PREPARAÇÃO DO GRÁFICO DE BARRAS (ZOOM E DESTAQUE) ---
         df_grafico = df_tabela.copy()
         id_selecionado_str = str(talhao_selecionado)
         df_grafico['fid_str'] = df_grafico['fid'].astype(str)
@@ -321,15 +315,11 @@ try:
             df_grafico['Destaque'] = df_grafico['fid_str'].apply(
                 lambda x: 'Selecionado' if x == id_selecionado_str else 'Outros Talhões'
             )
-
-            # Efeito de zoom: mostra o selecionado + vizinhos
             idx_list = df_grafico.index[df_grafico['fid_str'] == id_selecionado_str].tolist()
             if idx_list:
                 idx = idx_list[0]
-                start = max(0, idx - 5)
-                end = min(len(df_grafico), idx + 5)
+                start, end = max(0, idx - 5), min(len(df_grafico), idx + 5)
                 df_zoom = df_grafico.iloc[start:end].copy()
-                
                 if id_selecionado_str not in df_zoom['fid_str'].values:
                     df_zoom = pd.concat([df_zoom, df_grafico[df_grafico['fid_str'] == id_selecionado_str]])
             else:
@@ -338,94 +328,42 @@ try:
             df_grafico['Destaque'] = 'Todos'
             df_zoom = df_grafico.copy()
 
-        # Criar Gráfico de Barras
         fig_bar = px.bar(
-            df_zoom, 
-            x='fid_str', 
-            y=col_exp,
-            color='Destaque',
-            color_discrete_map={
-                'Selecionado': '#FAFF00', 
-                'Outros Talhões': '#A0A0A0', 
-                'Todos': '#0083B8'
-            },
+            df_zoom, x='fid_str', y=col_exp, color='Destaque',
+            color_discrete_map={'Selecionado': '#FAFF00', 'Outros Talhões': '#A0A0A0', 'Todos': '#0083B8'},
             category_orders={'fid_str': df_zoom['fid_str'].tolist()}
         )
 
-        # ADICIONAR ANOTAÇÃO (Vínculo dinâmico ao eixo X e Y)
         if talhao_selecionado != "Visão Geral":
             try:
                 valor_y = df_zoom.loc[df_zoom['fid_str'] == id_selecionado_str, col_exp].values[0]
                 fig_bar.add_annotation(
-                    x=id_selecionado_str, 
-                    y=valor_y,
-                    text="🎯 SELECIONADO",
-                    showarrow=True,
-                    arrowhead=2,
-                    ax=0,
-                    ay=-40,
-                    bgcolor="#FAFF00",
-                    bordercolor="black",
+                    x=id_selecionado_str, y=valor_y, text="🎯 SELECIONADO",
+                    showarrow=True, arrowhead=2, ax=0, ay=-40,
+                    bgcolor="#FAFF00", bordercolor="black",
                     font=dict(color="black", size=12, weight="bold"),
-                    xref="x", # O pulo do gato: refere-se ao valor do eixo X
-                    yref="y"  # Refere-se ao valor do eixo Y
+                    xref="x", yref="y"
                 )
-            except:
-                pass
+            except: pass
 
         fig_bar.update_layout(
-            showlegend=False,
-            height=400,
-            xaxis_title="ID do Talhão",
-            yaxis_title="% de Consumo",
-            xaxis={'type': 'category'},
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
+            showlegend=False, height=400, xaxis_title="ID do Talhão", yaxis_title="% de Consumo",
+            xaxis={'type': 'category'}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
             margin=dict(l=10, r=10, t=10, b=10)
         )
 
-        # Borda preta na barra amarela (seletor por cor)
-        fig_bar.update_traces(
-            marker_line_color="black", 
-            marker_line_width=2, 
-            selector=dict(marker_color='#FAFF00')
-        )
-
+        fig_bar.update_traces(marker_line_color="black", marker_line_width=2, selector=dict(marker_color='#FAFF00'))
         st.plotly_chart(fig_bar, use_container_width=True)
 
-        # --- GRÁFICO DE LINHAS (HISTÓRICO) ---
         if talhao_selecionado != "Visão Geral":
             st.markdown("---")
             st.subheader(f"📉 Histórico de Exploração: Talhão {talhao_selecionado}")
-            
             anos = ["2022", "2023", "2024", "2025"]
             dados_talhao = data[data['fid'] == talhao_selecionado].iloc[0]
-            
-            df_hist = pd.DataFrame([
-                {"Ano": a, "% Consumo": dados_talhao[f"exploracao_{a}"]} 
-                for a in anos if f"exploracao_{a}" in data.columns
-            ])
-
-            fig_line = px.line(
-                df_hist, x="Ano", y="% Consumo", 
-                markers=True, text=[f"{v:.1f}%" for v in df_hist["% Consumo"]]
-            )
-            
-            fig_line.update_traces(
-                line_color='#FAFF00', line_width=4,
-                marker=dict(size=12, color="black", symbol="diamond"),
-                textposition="top center"
-            )
-
-            fig_line.update_layout(
-                height=350,
-                yaxis_range=[0, 105],
-                xaxis_title="Evolução por Ano",
-                yaxis_title="Consumo Acumulado (%)",
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)'
-            )
-
+            df_hist = pd.DataFrame([{"Ano": a, "% Consumo": dados_talhao[f"exploracao_{a}"]} for a in anos if f"exploracao_{a}" in data.columns])
+            fig_line = px.line(df_hist, x="Ano", y="% Consumo", markers=True, text=[f"{v:.1f}%" for v in df_hist["% Consumo"]])
+            fig_line.update_traces(line_color='#FAFF00', line_width=4, marker=dict(size=12, color="black", symbol="diamond"), textposition="top center")
+            fig_line.update_layout(height=350, yaxis_range=[0, 105], xaxis_title="Evolução por Ano", yaxis_title="Consumo Acumulado (%)", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig_line, use_container_width=True)
 
 except Exception as e:
