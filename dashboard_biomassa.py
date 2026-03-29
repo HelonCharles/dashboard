@@ -312,40 +312,50 @@ try:
         st.markdown("---")
         st.subheader(f"📈 Ranking de Consumo - Foco: {talhao_selecionado}")
 
-        # --- PREPARAÇÃO DO GRÁFICO COM DESTAQUE CORRIGIDO ---
+        # --- PREPARAÇÃO DO GRÁFICO COM ZOOM E DESTAQUE ---
         df_grafico = df_tabela.copy()
-        
-        # Converter IDs para string para garantir comparação correta
         id_selecionado_str = str(talhao_selecionado)
         df_grafico['fid_str'] = df_grafico['fid'].astype(str)
-        
-        # Criar a lógica de cores: Amarelo para o selecionado, Cinza para o resto
-        # Usamos texto explícito para forçar o Plotly a tratar como categorias discretas
+
         if talhao_selecionado != "Visão Geral":
             df_grafico['Destaque'] = df_grafico['fid_str'].apply(
                 lambda x: 'Selecionado' if x == id_selecionado_str else 'Outros Talhões'
             )
+
+            # --- Criar efeito de zoom: mostrar o talhão selecionado + vizinhos ---
+            idx_list = df_grafico.index[df_grafico['fid_str'] == id_selecionado_str].tolist()
+            if idx_list:
+                idx = idx_list[0]
+                start = max(0, idx - 5)
+                end = min(len(df_grafico), idx + 5)
+                df_zoom = df_grafico.iloc[start:end]
+
+                # 🔑 Garantir que o talhão selecionado esteja incluído mesmo se não cair na janela
+                if id_selecionado_str not in df_zoom['fid_str'].values:
+                    linha_sel = df_grafico[df_grafico['fid_str'] == id_selecionado_str]
+                    df_zoom = pd.concat([df_zoom, linha_sel])
+            else:
+                df_zoom = df_grafico
         else:
-            df_grafico['Destaque'] = 'Todos' # Cor padrão quando nada está selecionado
+            df_grafico['Destaque'] = 'Todos'
+            df_zoom = df_grafico
 
         # Criar o Gráfico
         fig = px.bar(
-            df_grafico, 
+            df_zoom, 
             x='fid', 
             y=col_exp,
             color='Destaque',
-            # Mapeamento de cores explícito
             color_discrete_map={
                 'Selecionado': '#FAFF00',      # Amarelo Vivo
                 'Outros Talhões': '#A0A0A0',   # Cinza Suave
-                'Todos': '#0083B8'             # Azul padrão do dashboard
+                'Todos': '#0083B8'             # Azul padrão
             },
-            # Garante que a barra amarela fique no topo da legenda (se mostrada)
             category_orders={'Destaque': ['Selecionado', 'Outros Talhões', 'Todos']}
         )
 
         fig.update_layout(
-            showlegend=False, # Ocultar legenda para limpar o visual
+            showlegend=False,
             height=450,
             xaxis_title="ID do Talhão",
             yaxis_title="% de Consumo",
@@ -353,12 +363,31 @@ try:
             paper_bgcolor='rgba(0,0,0,0)',
             margin=dict(l=10, r=10, t=10, b=10)
         )
-        
-        # Adicionar borda preta apenas na barra selecionada para dar mais destaque
-        fig.update_traces(
-            marker_line_color='black', 
-            marker_line_width=2 if talhao_selecionado != "Visão Geral" else 0
-        )
+
+        # Adicionar borda preta apenas na barra selecionada
+        if talhao_selecionado != "Visão Geral":
+            fig.for_each_trace(
+                lambda trace: trace.update(
+                    marker_line_color="black",
+                    marker_line_width=2 if trace.name == "Selecionado" else 0
+                )
+            )
+
+            # --- Adicionar anotação textual em cima da barra amarela ---
+            filtro = df_zoom.loc[df_zoom['fid_str'] == id_selecionado_str, col_exp]
+            if not filtro.empty:
+                valor = filtro.values[0]
+                fig.add_annotation(
+                    x=id_selecionado_str,
+                    y=valor,
+                    text="🎯 Talhão Selecionado",
+                    showarrow=True,
+                    arrowhead=2,
+                    ax=0,
+                    ay=-40,
+                    font=dict(color="black", size=12, family="Arial"),
+                    bgcolor="#FAFF00"
+                )
 
         st.plotly_chart(fig, use_container_width=True)
 
