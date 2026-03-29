@@ -292,9 +292,9 @@ try:
         height=400
     )
     
-    # 8. Estatísticas Gerais e Gráfico
+    # 8. Estatísticas Gerais e Gráficos
     st.markdown("---")
-    with st.expander("📊 Estatísticas Gerais de Consumo", expanded=True):
+    with st.expander("📊 Estatísticas e Evolução do Consumo", expanded=True):
         col_m1, col_m2, col_m3 = st.columns(3)
         
         with col_m1:
@@ -312,7 +312,7 @@ try:
         st.markdown("---")
         st.subheader(f"📈 Ranking de Consumo - Foco: {talhao_selecionado}")
 
-        # --- PREPARAÇÃO DO GRÁFICO COM ZOOM E DESTAQUE ---
+        # --- PREPARAÇÃO DO GRÁFICO DE BARRAS (ZOOM E DESTAQUE) ---
         df_grafico = df_tabela.copy()
         id_selecionado_str = str(talhao_selecionado)
         df_grafico['fid_str'] = df_grafico['fid'].astype(str)
@@ -322,42 +322,39 @@ try:
                 lambda x: 'Selecionado' if x == id_selecionado_str else 'Outros Talhões'
             )
 
-            # --- Criar efeito de zoom: mostrar o talhão selecionado + vizinhos ---
+            # Efeito de zoom: mostra o selecionado + vizinhos
             idx_list = df_grafico.index[df_grafico['fid_str'] == id_selecionado_str].tolist()
             if idx_list:
                 idx = idx_list[0]
                 start = max(0, idx - 5)
                 end = min(len(df_grafico), idx + 5)
                 df_zoom = df_grafico.iloc[start:end]
-
-                # 🔑 Garantir que o talhão selecionado esteja incluído mesmo se não cair na janela
                 if id_selecionado_str not in df_zoom['fid_str'].values:
-                    linha_sel = df_grafico[df_grafico['fid_str'] == id_selecionado_str]
-                    df_zoom = pd.concat([df_zoom, linha_sel])
+                    df_zoom = pd.concat([df_zoom, df_grafico[df_grafico['fid_str'] == id_selecionado_str]])
             else:
                 df_zoom = df_grafico
         else:
             df_grafico['Destaque'] = 'Todos'
             df_zoom = df_grafico
 
-        # Criar o Gráfico
-        fig = px.bar(
+        # Gráfico de Barras
+        fig_bar = px.bar(
             df_zoom, 
-            x='fid_str',  # <--- Mudamos de 'fid' para 'fid_str'
+            x='fid_str', 
             y=col_exp,
             color='Destaque',
             color_discrete_map={
-                'Selecionado': '#FAFF00',      # Amarelo Vivo
-                'Outros Talhões': '#A0A0A0',   # Cinza Suave
-                'Todos': '#0083B8'             # Azul padrão
+                'Selecionado': '#FAFF00', 
+                'Outros Talhões': '#A0A0A0', 
+                'Todos': '#0083B8'
             },
             category_orders={'Destaque': ['Selecionado', 'Outros Talhões', 'Todos']}
         )
 
-        fig.update_layout(
+        fig_bar.update_layout(
             showlegend=False,
-            height=450,
-            xaxis_type='category', # <--- ISSO GARANTE A COR: força o eixo a ser categórico
+            height=400,
+            xaxis_type='category',
             xaxis_title="ID do Talhão",
             yaxis_title="% de Consumo",
             plot_bgcolor='rgba(0,0,0,0)',
@@ -365,32 +362,53 @@ try:
             margin=dict(l=10, r=10, t=10, b=10)
         )
 
-        # Adicionar borda preta apenas na barra selecionada
+        # Anotação e borda no selecionado
         if talhao_selecionado != "Visão Geral":
-            fig.for_each_trace(
-                lambda trace: trace.update(
-                    marker_line_color="black",
-                    marker_line_width=2 if trace.name == "Selecionado" else 0
-                )
+            valor_sel = df_zoom.loc[df_zoom['fid_str'] == id_selecionado_str, col_exp].values[0]
+            fig_bar.add_annotation(
+                x=id_selecionado_str, y=valor_sel, text="🎯 Selecionado",
+                showarrow=True, arrowhead=2, ay=-40, bgcolor="#FAFF00"
+            )
+            fig_bar.update_traces(marker_line_color="black", 
+                                 marker_line_width=2, 
+                                 selector=dict(name="Selecionado"))
+
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+        # --- NOVO: GRÁFICO DE LINHAS (EVOLUÇÃO TEMPORAL) ---
+        if talhao_selecionado != "Visão Geral":
+            st.markdown("---")
+            st.subheader(f"📉 Histórico de Exploração: Talhão {talhao_selecionado}")
+            
+            anos = ["2022", "2023", "2024", "2025"]
+            dados_talhao = data[data['fid'] == talhao_selecionado].iloc[0]
+            
+            df_hist = pd.DataFrame([
+                {"Ano": a, "% Consumo": dados_talhao[f"exploracao_{a}"]} 
+                for a in anos if f"exploracao_{a}" in data.columns
+            ])
+
+            fig_line = px.line(
+                df_hist, x="Ano", y="% Consumo", 
+                markers=True, text=[f"{v:.1f}%" for v in df_hist["% Consumo"]]
+            )
+            
+            fig_line.update_traces(
+                line_color='#FAFF00', line_width=4,
+                marker=dict(size=12, color="black", symbol="diamond"),
+                textposition="top center"
             )
 
-            # --- Adicionar anotação textual em cima da barra amarela ---
-            filtro = df_zoom.loc[df_zoom['fid_str'] == id_selecionado_str, col_exp]
-            if not filtro.empty:
-                valor = filtro.values[0]
-                fig.add_annotation(
-                    x=id_selecionado_str,
-                    y=valor,
-                    text="🎯 Talhão Selecionado",
-                    showarrow=True,
-                    arrowhead=2,
-                    ax=0,
-                    ay=-40,
-                    font=dict(color="black", size=12, family="Arial"),
-                    bgcolor="#FAFF00"
-                )
+            fig_line.update_layout(
+                height=350,
+                yaxis_range=[0, 105],
+                xaxis_title="Evolução por Ano",
+                yaxis_title="Consumo Acumulado (%)",
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
 
-        st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig_line, use_container_width=True)
 
 except Exception as e:
     st.error(f"⚠️ Erro ao carregar dashboard: {e}")
