@@ -251,22 +251,58 @@ try:
         - 🟢 **Verde**: Consumo < 30% (Baixo)
         """)
     
-    # 8. Estatísticas Gerais
+    # 8. Estatísticas Gerais e Gráfico de Ranking
     st.markdown("---")
     with st.expander("📊 Estatísticas Gerais de Consumo", expanded=True):
-        col1, col2, col3 = st.columns(3)
+        col_m1, col_m2, col_m3 = st.columns(3)
         
-        with col1:
+        with col_m1:
             criticos = len(df_tabela[df_tabela['% Consumo'] >= 70])
             st.metric("Talhões com Alto Consumo", criticos, f"{(criticos/len(df_tabela)*100):.1f}%", delta_color="inverse")
         
-        with col2:
+        with col_m2:
             atencao = len(df_tabela[(df_tabela['% Consumo'] >= 30) & (df_tabela['% Consumo'] < 70)])
             st.metric("Talhões com Consumo Moderado", atencao, f"{(atencao/len(df_tabela)*100):.1f}%")
         
-        with col3:
+        with col_m3:
             normais = len(df_tabela[df_tabela['% Consumo'] < 30])
             st.metric("Talhões com Baixo Consumo", normais, f"{(normais/len(df_tabela)*100):.1f}%")
 
+        st.markdown("---")
+        st.subheader(f"📈 Ranking de Consumo - Foco: {talhao_selecionado}")
+
+        # --- MOTOR DO GRÁFICO (O que estava faltando) ---
+        df_grafico = df_tabela.copy()
+        
+        # Criar a lógica de cores para o destaque
+        df_grafico['Destaque'] = df_grafico['ID Talhão'].apply(
+            lambda x: 'Selecionado' if str(x) == str(talhao_selecionado) else 'Outros'
+        )
+
+        fig = px.bar(
+            df_grafico, 
+            x='ID Talhão', 
+            y='% Consumo',
+            color='Destaque',
+            color_discrete_map={'Selecionado': '#FAFF00', 'Outros': '#A0A0A0'},
+            category_orders={"ID Talhão": df_grafico.sort_values('% Consumo', ascending=False)['ID Talhão'].tolist()}
+        )
+
+        fig.update_layout(
+            showlegend=False,
+            height=400,
+            xaxis_title="ID do Talhão",
+            yaxis_title="% de Consumo",
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=20, r=20, t=20, b=20)
+        )
+        
+        # Borda na barra selecionada
+        fig.update_traces(marker_line_color='black', marker_line_width=1.5 if talhao_selecionado != "Visão Geral" else 0)
+
+        st.plotly_chart(fig, use_container_width=True)
+
 except Exception as e:
     st.error(f"⚠️ Erro ao carregar dashboard: {e}")
+    st.exception(e) # Isso vai te mostrar exatamente onde o código parou
