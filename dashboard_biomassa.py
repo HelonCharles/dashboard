@@ -248,110 +248,99 @@ try:
             if output.get('last_bounds'):
                 st.session_state.map_state['bounds'] = output['last_bounds']
 
-    # 7. Relatório Detalhado com Destaque do Talhão Selecionado
+    # 7. Relatório Detalhado
     st.markdown("---")
-    st.subheader("📋 Detalhamento dos Dados")
+    st.subheader("📋 Relatório de Consumo por Talhão")
     
-    # Preparar tabela
-    colunas_tabela = ['fid', 'mudas_2020', col_saldo, col_exp]
-    df_tabela = data[colunas_tabela].copy()
-    df_tabela.columns = ['ID Talhão', 'Mudas (2020)', 'Saldo Atual', '% Extração']
-    df_tabela = df_tabela.sort_values(by='% Extração', ascending=False)
+    # Criamos uma cópia para a tabela sem estragar os nomes originais das colunas
+    df_tabela = data[['fid', 'mudas_2020', col_saldo, col_exp]].copy()
     
-    # Garantir que os IDs estão como string para comparação correta
-    df_tabela['ID Talhão'] = df_tabela['ID Talhão'].astype(str)
+    # Ordenação lógica
+    if talhao_selecionado != "Visão Geral":
+        df_tabela['is_selected'] = df_tabela['fid'].apply(lambda x: 1 if str(x) == str(talhao_selecionado) else 0)
+        df_tabela = df_tabela.sort_values(by=['is_selected', col_exp], ascending=[False, False]).drop(columns=['is_selected'])
+    else:
+        df_tabela = df_tabela.sort_values(by=col_exp, ascending=False)
     
-    # Função para destacar linha selecionada
+    # Função de destaque (usando os nomes técnicos das colunas para evitar erro de chave)
     def highlight_selected(row):
-        # Verificar se é o talhão selecionado (comparação como string)
-        if talhao_selecionado != "Visão Geral" and str(row['ID Talhão']) == str(talhao_selecionado):
-            return ['background-color: #ffeb3b; font-weight: bold'] * len(row)
-        # Aplicar cores baseadas na extração
-        elif row['% Extração'] >= 70:
-            return ['background-color: #ffcccc'] * len(row)
-        elif row['% Extração'] >= 30:
-            return ['background-color: #ffffcc'] * len(row)
+        if talhao_selecionado != "Visão Geral" and str(row['fid']) == str(talhao_selecionado):
+            return ['background-color: #FAFF00; color: black; font-weight: bold; border: 2px solid black'] * len(row)
+        
+        if row[col_exp] >= 70:
+            return ['background-color: #FFCDD2; color: black'] * len(row)
+        elif row[col_exp] >= 30:
+            return ['background-color: #FFF9C4; color: black'] * len(row)
         else:
-            return ['background-color: #ccffcc'] * len(row)
+            return ['background-color: #C8E6C9; color: black'] * len(row)
     
-    # Aplicar estilos à tabela
-    styled_df = df_tabela.style.apply(highlight_selected, axis=1)
-    styled_df = styled_df.format({
-        'Mudas (2020)': '{:,.0f}',
-        'Saldo Atual': '{:,.0f}',
-        '% Extração': '{:.1f}%'
-    })
-    
-    # Exibir tabela estilizada
+    # Exibição da Tabela - Aqui renomeamos apenas visualmente com o dicionário 'columns'
     st.dataframe(
-        styled_df,
+        df_tabela.style.apply(highlight_selected, axis=1).format({
+            'mudas_2020': '{:,.0f}',
+            col_saldo: '{:,.0f}',
+            col_exp: '{:.1f}%'
+        }),
+        column_config={
+            "fid": "ID Talhão",
+            "mudas_2020": "Estoque (2020)",
+            col_saldo: "Saldo Atual",
+            col_exp: "% Consumo"
+        },
         use_container_width=True,
         hide_index=True,
         height=400
     )
     
-    # Adicionar legenda da tabela
-    with st.expander("📖 Legenda da Tabela"):
-        st.markdown("""
-        **Cores na tabela:**
-        - 🟡 **Amarelo** (destaque): Talhão atualmente selecionado
-        - 🔴 **Vermelho**: Extração ≥ 70% (Crítico)
-        - 🟡 **Amarelo**: Extração entre 30% e 70% (Atenção)
-        - 🟢 **Verde**: Extração < 30% (Normal)
-        """)
-    
-    # 8. Estatísticas Gerais e Gráfico de Ranking
+    # 8. Estatísticas Gerais e Gráfico
     st.markdown("---")
     with st.expander("📊 Estatísticas Gerais de Consumo", expanded=True):
         col_m1, col_m2, col_m3 = st.columns(3)
         
+        # AQUI ESTAVA O ERRO: Agora usamos a variável 'col_exp' que o Python já conhece
         with col_m1:
-            criticos = len(df_tabela[df_tabela['% Consumo'] >= 70])
-            st.metric("Talhões com Alto Consumo", criticos, f"{(criticos/len(df_tabela)*100):.1f}%", delta_color="inverse")
+            criticos = len(df_tabela[df_tabela[col_exp] >= 70])
+            st.metric("Talhões com Alto Consumo", criticos, f"{(criticos/len(df_tabela)*100):.1f}%")
         
         with col_m2:
-            atencao = len(df_tabela[(df_tabela['% Consumo'] >= 30) & (df_tabela['% Consumo'] < 70)])
+            atencao = len(df_tabela[(df_tabela[col_exp] >= 30) & (df_tabela[col_exp] < 70)])
             st.metric("Talhões com Consumo Moderado", atencao, f"{(atencao/len(df_tabela)*100):.1f}%")
         
         with col_m3:
-            normais = len(df_tabela[df_tabela['% Consumo'] < 30])
+            normais = len(df_tabela[df_tabela[col_exp] < 30])
             st.metric("Talhões com Baixo Consumo", normais, f"{(normais/len(df_tabela)*100):.1f}%")
 
         st.markdown("---")
         st.subheader(f"📈 Ranking de Consumo - Foco: {talhao_selecionado}")
 
-        # --- MOTOR DO GRÁFICO (O que estava faltando) ---
+        # Preparação do Gráfico Plotly
         df_grafico = df_tabela.copy()
-        
-        # Criar a lógica de cores para o destaque
-        df_grafico['Destaque'] = df_grafico['ID Talhão'].apply(
+        df_grafico['Destaque'] = df_grafico['fid'].apply(
             lambda x: 'Selecionado' if str(x) == str(talhao_selecionado) else 'Outros'
         )
 
         fig = px.bar(
             df_grafico, 
-            x='ID Talhão', 
-            y='% Consumo',
+            x='fid', 
+            y=col_exp,
             color='Destaque',
             color_discrete_map={'Selecionado': '#FAFF00', 'Outros': '#A0A0A0'},
-            category_orders={"ID Talhão": df_grafico.sort_values('% Consumo', ascending=False)['ID Talhão'].tolist()}
+            category_orders={"fid": df_grafico['fid'].tolist()}
         )
 
         fig.update_layout(
             showlegend=False,
-            height=400,
+            height=450,
             xaxis_title="ID do Talhão",
             yaxis_title="% de Consumo",
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
-            margin=dict(l=20, r=20, t=20, b=20)
+            margin=dict(l=10, r=10, t=10, b=10)
         )
         
-        # Borda na barra selecionada
-        fig.update_traces(marker_line_color='black', marker_line_width=1.5 if talhao_selecionado != "Visão Geral" else 0)
-
+        fig.update_traces(marker_line_color='black', marker_line_width=1 if talhao_selecionado != "Visão Geral" else 0)
         st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
     st.error(f"⚠️ Erro ao carregar dashboard: {e}")
-    st.exception(e) # Isso vai te mostrar exatamente onde o código parou
+    st.exception(e)
