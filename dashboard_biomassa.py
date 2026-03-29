@@ -4,13 +4,13 @@ import geopandas as gpd
 from streamlit_folium import st_folium
 import pandas as pd
 import folium
-from folium import Element
-import json
+import plotly.express as px
 
 # 1. Configuração da Interface
 st.set_page_config(layout="wide", page_title="BioTrack Roraima", page_icon="🛰️")
 
-st.title("🛰️ BioTrack - Auditoria de Biomassa")
+# Título Atualizado
+st.title("🛰️ BioTrack - Gestão de Consumo e Estoque")
 st.markdown("---")
 
 # 2. Carregamento dos Dados
@@ -21,321 +21,127 @@ def carregar_dados():
         gdf = gdf.to_crs("EPSG:4326")
     return gdf
 
-# Inicializar estado do mapa na sessão
+# Inicializar estado do mapa
 if 'map_state' not in st.session_state:
-    st.session_state.map_state = {
-        'center': [2.82, -60.67],
-        'zoom': 12,
-        'bounds': None
-    }
-
-# Inicializar estado do talhão selecionado para hover
-if 'hover_talhao' not in st.session_state:
-    st.session_state.hover_talhao = None
+    st.session_state.map_state = {'center': [2.82, -60.67], 'zoom': 12}
 
 try:
     data = carregar_dados()
 
-    # 3. Painel Lateral
+    # 3. Painel Lateral (Nomenclatura atualizada)
     with st.sidebar:
         st.header("🔍 Painel de Controle")
-        ano = st.selectbox("Selecione o Ano de Auditoria", ["2022", "2023", "2024", "2025"])
+        ano = st.selectbox("Selecione o Ano de Referência", ["2022", "2023", "2024", "2025"])
         col_exp = f"exploracao_{ano}" 
         col_saldo = f"saldo_{ano}"
         
         st.markdown("---")
-        st.subheader("🎯 Focar em Talhão")
+        st.subheader("🎯 Localização de Talhão")
         lista_talhoes = sorted(data['fid'].unique().tolist())
-        talhao_selecionado = st.selectbox("Escolha o ID para Inspeção", ["Visão Geral"] + lista_talhoes)
+        talhao_selecionado = st.selectbox("Escolha o ID para Análise", ["Visão Geral"] + lista_talhoes)
         
-        # Botão para resetar o mapa
-        if st.button("🔄 Resetar Visualização do Mapa"):
-            st.session_state.map_state = {
-                'center': [2.82, -60.67],
-                'zoom': 12,
-                'bounds': None
-            }
+        if st.button("🔄 Resetar Mapa"):
+            st.session_state.map_state = {'center': [2.82, -60.67], 'zoom': 12}
             st.rerun()
 
-        # Botão para focar no talhão selecionado
-        if talhao_selecionado != "Visão Geral":
-            if st.button("🎯 Centralizar no Talhão"):
-                geom = data[data['fid'] == talhao_selecionado].geometry.centroid.iloc[0]
-                st.session_state.map_state['center'] = [geom.y, geom.x]
-                st.session_state.map_state['zoom'] = 16
-                st.rerun()
-
-    # 4. KPIs
+    # 4. KPIs (Consumo e Estoque)
     total_original = data['mudas_2020'].sum()
     saldo_atual = data[col_saldo].sum()
-    extraido = total_original - saldo_atual
-    progresso = (extraido / total_original) * 100
+    consumo_total = total_original - saldo_atual
+    progresso_consumo = (consumo_total / total_original) * 100
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Estoque Inicial (2020)", f"{total_original:,.0f}".replace(",", "."))
-    c2.metric("Saldo Remanescente", f"{saldo_atual:,.0f}".replace(",", "."), delta=f"-{extraido:,.0f}", delta_color="inverse")
-    c3.metric("Progresso da Extração", f"{progresso:.1f}%")
+    c2.metric("Saldo em Estoque", f"{saldo_atual:,.0f}".replace(",", "."), delta=f"-{consumo_total:,.0f}", delta_color="inverse")
+    c3.metric("Percentual de Consumo", f"{progresso_consumo:.1f}%")
 
     st.markdown("---")
 
-    # 5. Informações do Talhão Selecionado (Quadro Fora do Mapa)
+    # 5. Informações do Talhão Selecionado
     if talhao_selecionado != "Visão Geral":
-        st.subheader(f"📊 Informações Detalhadas - Talhão {talhao_selecionado}")
-        
-        # Buscar dados do talhão selecionado
+        st.subheader(f"📊 Detalhes de Consumo - Talhão {talhao_selecionado}")
         talhao_data = data[data['fid'] == talhao_selecionado].iloc[0]
         
-        # Criar colunas para informações
         col1, col2, col3, col4 = st.columns(4)
+        col1.metric("ID Talhão", talhao_selecionado)
+        col2.metric("Estoque 2020", f"{talhao_data['mudas_2020']:,.0f}".replace(",", "."))
+        col3.metric(f"Saldo {ano}", f"{talhao_data[col_saldo]:,.0f}".replace(",", "."))
         
-        with col1:
-            st.metric(
-                "ID do Talhão", 
-                talhao_selecionado,
-                help="Identificador único do talhão"
-            )
+        consumo_talhao = talhao_data['mudas_2020'] - talhao_data[col_saldo]
+        col4.metric(f"% Consumo {ano}", f"{talhao_data[col_exp]:.1f}%", 
+                    delta=f"-{consumo_talhao:,.0f}".replace(",", ".") if consumo_talhao > 0 else None, 
+                    delta_color="inverse")
         
-        with col2:
-            st.metric(
-                "Mudas (2020)", 
-                f"{talhao_data['mudas_2020']:,.0f}".replace(",", "."),
-                help="Quantidade inicial de mudas em 2020"
-            )
-        
-        with col3:
-            st.metric(
-                f"Saldo {ano}", 
-                f"{talhao_data[col_saldo]:,.0f}".replace(",", "."),
-                help=f"Saldo remanescente em {ano}"
-            )
-        
-        with col4:
-            extraido_talhao = talhao_data['mudas_2020'] - talhao_data[col_saldo]
-            st.metric(
-                f"% Extração {ano}", 
-                f"{talhao_data[col_exp]:.1f}%",
-                delta=f"-{extraido_talhao:,.0f}".replace(",", ".") if extraido_talhao > 0 else None,
-                delta_color="inverse",
-                help="Percentual de biomassa extraída"
-            )
-        
-        # Adicionar barra de progresso para o talhão específico
-        st.progress(talhao_data[col_exp] / 100, text="Progresso de Extração do Talhão")
-        
-        # Status baseado no percentual de extração
-        perc_extracao = talhao_data[col_exp]
-        if perc_extracao < 30:
-            status = "🟢 Baixa Extração"
-            status_color = "green"
-        elif perc_extracao < 70:
-            status = "🟡 Extração Moderada"
-            status_color = "orange"
-        else:
-            status = "🔴 Alta Extração"
-            status_color = "red"
-        
-        st.markdown(f"**Status:** <span style='color:{status_color}; font-weight:bold'>{status}</span>", unsafe_allow_html=True)
-        
+        st.progress(talhao_data[col_exp] / 100, text="Progresso de Consumo do Talhão")
         st.markdown("---")
 
     # 6. Visualização Espacial
-    st.subheader(f"🗺️ Mapa: {talhao_selecionado} ({ano})")
+    st.subheader(f"🗺️ Mapa de Consumo: {talhao_selecionado} ({ano})")
     
-    # Determinar centro e zoom baseado no estado salvo
-    center = st.session_state.map_state['center']
-    zoom = st.session_state.map_state['zoom']
-    
-    # Criar mapa
+    # Lógica de Foco
+    if talhao_selecionado != "Visão Geral":
+        geom = data[data['fid'] == talhao_selecionado].geometry.centroid.iloc[0]
+        center = [geom.y, geom.x]
+        zoom = 15
+    else:
+        center = st.session_state.map_state['center']
+        zoom = st.session_state.map_state['zoom']
+
     m = leafmap.Map(center=center, zoom=zoom, google_map="SATELLITE")
 
-    # Preparar dados para hover (criar GeoJSON com propriedades)
-    # Converter dados para GeoJSON com todas as propriedades
-    data_geojson = data.copy()
-    
-    # Adicionar informações extras para o hover
-    data_geojson['properties'] = data_geojson.apply(lambda row: {
-        'ID Talhão': row['fid'],
-        'Mudas 2020': f"{row['mudas_2020']:,.0f}",
-        f'Saldo {ano}': f"{row[col_saldo]:,.0f}",
-        f'% Extração {ano}': f"{row[col_exp]:.1f}%",
-        'Status': 'Alta Extração' if row[col_exp] >= 70 else ('Média Extração' if row[col_exp] >= 30 else 'Baixa Extração')
-    }, axis=1)
-    
-    # Adicionar camada principal com estilo baseado no percentual
     m.add_data(
-        data,
-        column=col_exp,
-        scheme="UserDefined", 
+        data, column=col_exp, scheme="UserDefined", 
         classification_kwds=dict(bins=[1, 30, 70, 99, 100]),
         colors=["#228B22", "#ADFF2F", "#FFFF00", "#FF8C00", "#FF0000"],
-        layer_name=f"Status {ano}",
+        layer_name=f"Status Consumo {ano}",
         fields=["fid", "mudas_2020", col_saldo, col_exp],
-        aliases=["ID Talhão", "Mudas 2020", "Saldo Atual", "% Extraído"],
-        info_mode="on_hover"  # Ativar hover para mostrar informações
+        aliases=["ID Talhão", "Estoque 2020", "Saldo Atual", "% Consumo"],
+        info_mode="on_hover"
     )
 
-    # Se houver um talhão específico selecionado, destacar com borda amarela
     if talhao_selecionado != "Visão Geral":
-        geom_talhao = data[data['fid'] == talhao_selecionado].geometry.iloc[0]
-        # Criar um estilo destacado para o polígono selecionado
-        m.add_gdf(
-            gpd.GeoDataFrame(geometry=[geom_talhao], crs="EPSG:4326"),
-            style={
-                "color": "yellow", 
-                "weight": 5, 
-                "fillOpacity": 0.1,
-                "dashArray": "5, 5"  # Linha pontilhada para destacar
-            },
-            layer_name=f"✨ Talhão {talhao_selecionado} (Selecionado)",
-            info_mode=None  # Não mostrar popup para evitar duplicação
-        )
-        
-        # Adicionar marcador com informações no centro do polígono
-        centroid = geom_talhao.centroid
-        row = data[data['fid'] == talhao_selecionado].iloc[0]
-        
-        # Criar popup mais informativo
-        popup_html = f"""
-        <div style="font-family: monospace; min-width: 200px;">
-            <h4 style="margin: 0 0 5px 0;">📍 Talhão {talhao_selecionado}</h4>
-            <hr style="margin: 5px 0;">
-            <b>🌱 Mudas 2020:</b> {row['mudas_2020']:,.0f}<br>
-            <b>📊 Saldo {ano}:</b> {row[col_saldo]:,.0f}<br>
-            <b>⚡ Extração {ano}:</b> {row[col_exp]:.1f}%<br>
-            <b>📈 Extraído:</b> {row['mudas_2020'] - row[col_saldo]:,.0f}<br>
-            <hr style="margin: 5px 0;">
-            <b>🎯 Status:</b> 
-            <span style="color: {'red' if row[col_exp] >= 70 else 'orange' if row[col_exp] >= 30 else 'green'}">
-                {'Crítico' if row[col_exp] >= 70 else 'Atenção' if row[col_exp] >= 30 else 'Normal'}
-            </span>
-        </div>
-        """
-        
-        # Adicionar marcador com popup
-        folium.Marker(
-            [centroid.y, centroid.x],
-            popup=folium.Popup(popup_html, max_width=300),
-            icon=folium.Icon(color="red", icon="info-sign", prefix='glyphicon')
-        ).add_to(m)
+        m.add_gdf(data[data['fid'] == talhao_selecionado], 
+                  style={"color": "yellow", "weight": 5, "fillOpacity": 0.1},
+                  layer_name="Destaque Seleção")
 
-    # Exibir mapa e capturar interações
-    output = st_folium(
-        m, 
-        key=f"map_instance_{ano}_{talhao_selecionado}", 
-        width=1200, 
-        height=600,
-        returned_objects=["last_center", "last_bounds", "last_zoom", "last_object_clicked"]
-    )
-    
-    # Atualizar o estado do mapa baseado nas interações do usuário
-    if output and output.get('last_center') and output.get('last_zoom'):
-        new_center = [output['last_center']['lat'], output['last_center']['lng']]
-        new_zoom = output['last_zoom']
-        
-        if (new_center != st.session_state.map_state['center'] or 
-            new_zoom != st.session_state.map_state['zoom']):
-            st.session_state.map_state['center'] = new_center
-            st.session_state.map_state['zoom'] = new_zoom
-            
-            if output.get('last_bounds'):
-                st.session_state.map_state['bounds'] = output['last_bounds']
-    
-    # Capturar clique no mapa e atualizar seleção se for um talhão
-    if output and output.get('last_object_clicked'):
-        clicked_data = output['last_object_clicked']
-        # Aqui você precisaria implementar a lógica para identificar qual talhão foi clicado
-        # Isso depende de como o leafmap retorna os dados. Um exemplo simplificado:
-        if 'id' in clicked_data:
-            clicked_id = clicked_data['id']
-            # Se o ID clicado for um talhão válido, atualizar a seleção
-            # Nota: Isso requer que os IDs dos polígonos sejam configurados corretamente
+    st_folium(m, key=f"map_{talhao_selecionado}", width=1200, height=500)
 
-    # 7. Relatório Detalhado com Destaque do Talhão Selecionado
+    # 7. Tabela com Destaque e Ordenação
     st.markdown("---")
-    st.subheader("📋 Detalhamento dos Dados")
+    st.subheader("📋 Relatório de Consumo por Talhão")
     
-    # Preparar tabela
-    colunas_tabela = ['fid', 'mudas_2020', col_saldo, col_exp]
-    df_tabela = data[colunas_tabela].copy()
-    df_tabela.columns = ['ID Talhão', 'Mudas (2020)', 'Saldo Atual', '% Extração']
+    df_tabela = data[['fid', 'mudas_2020', col_saldo, col_exp]].copy()
+    df_tabela.columns = ['ID Talhão', 'Estoque (2020)', 'Saldo Atual', '% Consumo']
     
-    # ORDENAÇÃO: Se houver talhão selecionado, ele aparece no TOPO da tabela
+    # Ordenação: Selecionado sempre no topo
     if talhao_selecionado != "Visão Geral":
-        df_tabela['is_selected'] = df_tabela['ID Talhão'].apply(lambda x: 1 if str(x) == str(talhao_selecionado) else 0)
-        df_tabela = df_tabela.sort_values(by=['is_selected', '% Extração'], ascending=[False, False]).drop(columns=['is_selected'])
+        df_tabela['ordem'] = df_tabela['ID Talhão'].apply(lambda x: 1 if str(x) == str(talhao_selecionado) else 0)
+        df_tabela = df_tabela.sort_values(['ordem', '% Consumo'], ascending=[False, False]).drop('ordem', axis=1)
     else:
-        df_tabela = df_tabela.sort_values(by='% Extração', ascending=False)
-    
-    # Função para destacar linha selecionada com COR FORTE (Amarelo Vivo)
-    def highlight_selected(row):
-        # Convertemos ambos para string para garantir a comparação
+        df_tabela = df_tabela.sort_values('% Consumo', ascending=False)
+
+    def style_row(row):
         if talhao_selecionado != "Visão Geral" and str(row['ID Talhão']) == str(talhao_selecionado):
             return ['background-color: #FAFF00; color: black; font-weight: bold; border: 2px solid black'] * len(row)
-        
-        # Cores suaves para os demais
-        if row['% Extração'] >= 70:
-            return ['background-color: #FFCDD2; color: black'] * len(row) # Vermelho suave
-        elif row['% Extração'] >= 30:
-            return ['background-color: #FFF9C4; color: black'] * len(row) # Amarelo suave
-        else:
-            return ['background-color: #C8E6C9; color: black'] * len(row) # Verde suave
-    
-    # Exibir tabela estilizada
-    st.dataframe(
-        df_tabela.style.apply(highlight_selected, axis=1).format({
-            'Mudas (2020)': '{:,.0f}',
-            'Saldo Atual': '{:,.0f}',
-            '% Extração': '{:.1f}%'
-        }),
-        use_container_width=True,
-        hide_index=True,
-        height=400
-    )
-    
-    # Adicionar legenda da tabela
-    with st.expander("📖 Legenda da Tabela"):
-        st.markdown("""
-        **Cores na tabela:**
-        - 🟡 **Amarelo** (destaque): Talhão atualmente selecionado
-        - 🔴 **Vermelho**: Extração ≥ 70% (Crítico)
-        - 🟡 **Amarelo**: Extração entre 30% e 70% (Atenção)
-        - 🟢 **Verde**: Extração < 30% (Normal)
-        """)
-    
-    # 8. Adicionar informações estatísticas extras
+        return [''] * len(row)
+
+    st.dataframe(df_tabela.style.apply(style_row, axis=1).format({'Estoque (2020)': '{:,.0f}', 'Saldo Atual': '{:,.0f}', '% Consumo': '{:.1f}%'}), use_container_width=True, hide_index=True)
+
+    # 8. Gráfico com Destaque Real (Plotly)
     st.markdown("---")
-    with st.expander("📊 Estatísticas Gerais"):
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            talhoes_criticos = len(df_tabela[df_tabela['% Extração'] >= 70])
-            st.metric(
-                "Talhões Críticos", 
-                talhoes_criticos,
-                f"{(talhoes_criticos/len(df_tabela)*100):.1f}% do total",
-                delta_color="inverse"
-            )
-        
-        with col2:
-            talhoes_atencao = len(df_tabela[(df_tabela['% Extração'] >= 30) & (df_tabela['% Extração'] < 70)])
-            st.metric(
-                "Talhões em Atenção", 
-                talhoes_atencao,
-                f"{(talhoes_atencao/len(df_tabela)*100):.1f}% do total"
-            )
-        
-        with col3:
-            talhoes_normais = len(df_tabela[df_tabela['% Extração'] < 30])
-            st.metric(
-                "Talhões Normais", 
-                talhoes_normais,
-                f"{(talhoes_normais/len(df_tabela)*100):.1f}% do total"
-            )
-        
-        # Adicionar gráfico de distribuição (opcional, se tiver plotly)
-        st.markdown("### Distribuição da Extração")
-        st.bar_chart(df_tabela.set_index('ID Talhão')['% Extração'])
+    st.subheader("📈 Ranking de Consumo")
+    
+    # Criar coluna de cor para o gráfico
+    df_tabela['Cor'] = df_tabela['ID Talhão'].apply(lambda x: 'Selecionado' if str(x) == str(talhao_selecionado) else 'Outros')
+    
+    fig = px.bar(
+        df_tabela, x='ID Talhão', y='% Consumo',
+        color='Cor',
+        color_discrete_map={'Selecionado': '#FAFF00', 'Outros': '#A0A0A0'},
+        category_orders={"ID Talhão": df_tabela.sort_values('% Consumo', ascending=False)['ID Talhão'].tolist()}
+    )
+    fig.update_layout(showlegend=False, margin=dict(l=20, r=20, t=20, b=20), height=400)
+    st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
-    st.error(f"⚠️ Erro: {e}")
-    st.exception(e)
+    st.error(f"⚠️ Erro ao carregar dashboard: {e}")
