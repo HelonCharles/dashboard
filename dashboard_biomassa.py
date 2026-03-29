@@ -6,6 +6,7 @@ import pandas as pd
 import folium
 from folium import Element
 import json
+import plotly.express as px
 
 # 1. Configuração da Interface
 st.set_page_config(layout="wide", page_title="BioTrack Roraima", page_icon="🛰️")
@@ -39,7 +40,7 @@ try:
     # 3. Painel Lateral
     with st.sidebar:
         st.header("🔍 Painel de Controle")
-        ano = st.selectbox("Selecione o Ano de Referência", ["2022", "2023", "2024", "2025"])
+        ano = st.selectbox("Selecione o ano de referência", ["2022", "2023", "2024", "2025"])
         col_exp = f"exploracao_{ano}" 
         col_saldo = f"saldo_{ano}"
         
@@ -72,7 +73,7 @@ try:
     progresso = (consumido / total_original) * 100
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Estoque Inicial (2020)", f"{total_original:,.0f}".replace(",", "."))
+    c1.metric("Estoque Inicial de Acácias (2020)", f"{total_original:,.0f}".replace(",", "."))
     c2.metric("Saldo em Estoque", f"{saldo_atual:,.0f}".replace(",", "."), delta=f"-{consumido:,.0f}", delta_color="inverse")
     c3.metric("Percentual de Consumo", f"{progresso:.1f}%")
 
