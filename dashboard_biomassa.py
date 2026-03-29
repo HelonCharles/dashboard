@@ -9,7 +9,7 @@ import plotly.express as px
 # 1. Configuração da Interface
 st.set_page_config(layout="wide", page_title="BioTrack Roraima", page_icon="🛰️")
 
-# Título Atualizado
+# Título
 st.title("🛰️ BioTrack - Gestão de Consumo e Estoque")
 st.markdown("---")
 
@@ -18,20 +18,19 @@ st.markdown("---")
 def carregar_dados():
     gdf = gpd.read_file("dados_auditoria.geojson")
     if gdf.crs != "EPSG:4326":
-        gdf = gdf.to_crs("EPSG:4326")
+        gdf = gdf.to_crs(epsg=4326)
     return gdf
 
-# Inicializar estado do mapa
 if 'map_state' not in st.session_state:
     st.session_state.map_state = {'center': [2.82, -60.67], 'zoom': 12}
 
 try:
     data = carregar_dados()
 
-    # 3. Painel Lateral (Nomenclatura atualizada)
+    # 3. Painel Lateral
     with st.sidebar:
         st.header("🔍 Painel de Controle")
-        ano = st.selectbox("Selecione o Ano de Referência", ["2022", "2023", "2024", "2025"])
+        ano = st.selectbox("Selecione o Ano de Referência", ["2022", "2023", "2024", "2025"], index=3)
         col_exp = f"exploracao_{ano}" 
         col_saldo = f"saldo_{ano}"
         
@@ -44,7 +43,7 @@ try:
             st.session_state.map_state = {'center': [2.82, -60.67], 'zoom': 12}
             st.rerun()
 
-    # 4. KPIs (Consumo e Estoque)
+    # 4. KPIs
     total_original = data['mudas_2020'].sum()
     saldo_atual = data[col_saldo].sum()
     consumo_total = total_original - saldo_atual
@@ -61,87 +60,82 @@ try:
     if talhao_selecionado != "Visão Geral":
         st.subheader(f"📊 Detalhes de Consumo - Talhão {talhao_selecionado}")
         talhao_data = data[data['fid'] == talhao_selecionado].iloc[0]
-        
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("ID Talhão", talhao_selecionado)
         col2.metric("Estoque 2020", f"{talhao_data['mudas_2020']:,.0f}".replace(",", "."))
         col3.metric(f"Saldo {ano}", f"{talhao_data[col_saldo]:,.0f}".replace(",", "."))
-        
-        consumo_talhao = talhao_data['mudas_2020'] - talhao_data[col_saldo]
-        col4.metric(f"% Consumo {ano}", f"{talhao_data[col_exp]:.1f}%", 
-                    delta=f"-{consumo_talhao:,.0f}".replace(",", ".") if consumo_talhao > 0 else None, 
-                    delta_color="inverse")
-        
-        st.progress(talhao_data[col_exp] / 100, text="Progresso de Consumo do Talhão")
+        consumo_t = talhao_data['mudas_2020'] - talhao_data[col_saldo]
+        col4.metric(f"% Consumo {ano}", f"{talhao_data[col_exp]:.1f}%", delta=f"-{consumo_t:,.0f}".replace(",", "."), delta_color="inverse")
+        st.progress(talhao_data[col_exp] / 100)
         st.markdown("---")
 
-    # 6. Visualização Espacial
+    # 6. Visualização Espacial (Foco no Destaque Amarelo)
     st.subheader(f"🗺️ Mapa de Consumo: {talhao_selecionado} ({ano})")
     
-    # Lógica de Foco
     if talhao_selecionado != "Visão Geral":
-        geom = data[data['fid'] == talhao_selecionado].geometry.centroid.iloc[0]
-        center = [geom.y, geom.x]
-        zoom = 15
+        target = data[data['fid'] == talhao_selecionado].geometry.centroid.iloc[0]
+        center, zoom = [target.y, target.x], 15
     else:
-        center = st.session_state.map_state['center']
-        zoom = st.session_state.map_state['zoom']
+        center, zoom = st.session_state.map_state['center'], st.session_state.map_state['zoom']
 
     m = leafmap.Map(center=center, zoom=zoom, google_map="SATELLITE")
 
+    # Camada de Dados
     m.add_data(
         data, column=col_exp, scheme="UserDefined", 
         classification_kwds=dict(bins=[1, 30, 70, 99, 100]),
         colors=["#228B22", "#ADFF2F", "#FFFF00", "#FF8C00", "#FF0000"],
-        layer_name=f"Status Consumo {ano}",
+        layer_name="Status Consumo",
         fields=["fid", "mudas_2020", col_saldo, col_exp],
-        aliases=["ID Talhão", "Estoque 2020", "Saldo Atual", "% Consumo"],
+        aliases=["ID", "Estoque 2020", "Saldo", "% Consumo"],
         info_mode="on_hover"
     )
 
+    # ✅ Destaque Forçado (Borda Amarela Grossa)
     if talhao_selecionado != "Visão Geral":
-        m.add_gdf(data[data['fid'] == talhao_selecionado], 
-                  style={"color": "yellow", "weight": 5, "fillOpacity": 0.1},
-                  layer_name="Destaque Seleção")
+        feature = data[data['fid'] == talhao_selecionado]
+        folium.GeoJson(
+            feature,
+            name="Destaque Seleção",
+            style_function=lambda x: {'fillColor': 'none', 'color': '#FAFF00', 'weight': 6}
+        ).add_to(m)
 
-    st_folium(m, key=f"map_{talhao_selecionado}", width=1200, height=500)
+    st_folium(m, key=f"map_{talhao_selecionado}_{ano}", width=1200, height=500)
 
-    # 7. Tabela com Destaque e Ordenação
+    # 7. Tabela
     st.markdown("---")
     st.subheader("📋 Relatório de Consumo por Talhão")
+    df_tab = data[['fid', 'mudas_2020', col_saldo, col_exp]].copy()
+    df_tab.columns = ['ID Talhão', 'Estoque (2020)', 'Saldo Atual', '% Consumo']
     
-    df_tabela = data[['fid', 'mudas_2020', col_saldo, col_exp]].copy()
-    df_tabela.columns = ['ID Talhão', 'Estoque (2020)', 'Saldo Atual', '% Consumo']
-    
-    # Ordenação: Selecionado sempre no topo
     if talhao_selecionado != "Visão Geral":
-        df_tabela['ordem'] = df_tabela['ID Talhão'].apply(lambda x: 1 if str(x) == str(talhao_selecionado) else 0)
-        df_tabela = df_tabela.sort_values(['ordem', '% Consumo'], ascending=[False, False]).drop('ordem', axis=1)
+        df_tab['ordem'] = df_tab['ID Talhão'].apply(lambda x: 1 if str(x) == str(talhao_selecionado) else 0)
+        df_tab = df_tab.sort_values(['ordem', '% Consumo'], ascending=[False, False]).drop('ordem', axis=1)
     else:
-        df_tabela = df_tabela.sort_values('% Consumo', ascending=False)
+        df_tab = df_tab.sort_values('% Consumo', ascending=False)
 
     def style_row(row):
         if talhao_selecionado != "Visão Geral" and str(row['ID Talhão']) == str(talhao_selecionado):
-            return ['background-color: #FAFF00; color: black; font-weight: bold; border: 2px solid black'] * len(row)
+            return ['background-color: #FAFF00; color: black; font-weight: bold'] * len(row)
         return [''] * len(row)
 
-    st.dataframe(df_tabela.style.apply(style_row, axis=1).format({'Estoque (2020)': '{:,.0f}', 'Saldo Atual': '{:,.0f}', '% Consumo': '{:.1f}%'}), use_container_width=True, hide_index=True)
+    st.dataframe(df_tab.style.apply(style_row, axis=1).format({'Estoque (2020)': '{:,.0f}', 'Saldo Atual': '{:,.0f}', '% Consumo': '{:.1f}%'}), use_container_width=True, hide_index=True)
 
-    # 8. Gráfico com Destaque Real (Plotly)
+    # 8. Gráfico com Destaque Corrigido
     st.markdown("---")
     st.subheader("📈 Ranking de Consumo")
     
-    # Criar coluna de cor para o gráfico
-    df_tabela['Cor'] = df_tabela['ID Talhão'].apply(lambda x: 'Selecionado' if str(x) == str(talhao_selecionado) else 'Outros')
+    df_graph = df_tab.copy()
+    df_graph['Status'] = df_graph['ID Talhão'].apply(lambda x: 'Selecionado' if str(x) == str(talhao_selecionado) else 'Outros')
     
+    # Forçamos as cores e a ordem para o gráfico respeitar a seleção
     fig = px.bar(
-        df_tabela, x='ID Talhão', y='% Consumo',
-        color='Cor',
+        df_graph, x='ID Talhão', y='% Consumo', color='Status',
         color_discrete_map={'Selecionado': '#FAFF00', 'Outros': '#A0A0A0'},
-        category_orders={"ID Talhão": df_tabela.sort_values('% Consumo', ascending=False)['ID Talhão'].tolist()}
+        category_orders={"ID Talhão": df_graph['ID Talhão'].tolist()}
     )
-    fig.update_layout(showlegend=False, margin=dict(l=20, r=20, t=20, b=20), height=400)
+    fig.update_layout(showlegend=False, height=400)
     st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
-    st.error(f"⚠️ Erro ao carregar dashboard: {e}")
+    st.error(f"Erro: {e}")
