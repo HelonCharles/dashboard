@@ -297,7 +297,6 @@ try:
     with st.expander("📊 Estatísticas Gerais de Consumo", expanded=True):
         col_m1, col_m2, col_m3 = st.columns(3)
         
-        # AQUI ESTAVA O ERRO: Agora usamos a variável 'col_exp' que o Python já conhece
         with col_m1:
             criticos = len(df_tabela[df_tabela[col_exp] >= 70])
             st.metric("Talhões com Alto Consumo", criticos, f"{(criticos/len(df_tabela)*100):.1f}%")
@@ -313,23 +312,40 @@ try:
         st.markdown("---")
         st.subheader(f"📈 Ranking de Consumo - Foco: {talhao_selecionado}")
 
-        # Preparação do Gráfico Plotly
+        # --- PREPARAÇÃO DO GRÁFICO COM DESTAQUE CORRIGIDO ---
         df_grafico = df_tabela.copy()
-        df_grafico['Destaque'] = df_grafico['fid'].apply(
-            lambda x: 'Selecionado' if str(x) == str(talhao_selecionado) else 'Outros'
-        )
+        
+        # Converter IDs para string para garantir comparação correta
+        id_selecionado_str = str(talhao_selecionado)
+        df_grafico['fid_str'] = df_grafico['fid'].astype(str)
+        
+        # Criar a lógica de cores: Amarelo para o selecionado, Cinza para o resto
+        # Usamos texto explícito para forçar o Plotly a tratar como categorias discretas
+        if talhao_selecionado != "Visão Geral":
+            df_grafico['Destaque'] = df_grafico['fid_str'].apply(
+                lambda x: 'Selecionado' if x == id_selecionado_str else 'Outros Talhões'
+            )
+        else:
+            df_grafico['Destaque'] = 'Todos' # Cor padrão quando nada está selecionado
 
+        # Criar o Gráfico
         fig = px.bar(
             df_grafico, 
             x='fid', 
             y=col_exp,
             color='Destaque',
-            color_discrete_map={'Selecionado': '#FAFF00', 'Outros': '#A0A0A0'},
-            category_orders={"fid": df_grafico['fid'].tolist()}
+            # Mapeamento de cores explícito
+            color_discrete_map={
+                'Selecionado': '#FAFF00',      # Amarelo Vivo
+                'Outros Talhões': '#A0A0A0',   # Cinza Suave
+                'Todos': '#0083B8'             # Azul padrão do dashboard
+            },
+            # Garante que a barra amarela fique no topo da legenda (se mostrada)
+            category_orders={'Destaque': ['Selecionado', 'Outros Talhões', 'Todos']}
         )
 
         fig.update_layout(
-            showlegend=False,
+            showlegend=False, # Ocultar legenda para limpar o visual
             height=450,
             xaxis_title="ID do Talhão",
             yaxis_title="% de Consumo",
@@ -338,7 +354,12 @@ try:
             margin=dict(l=10, r=10, t=10, b=10)
         )
         
-        fig.update_traces(marker_line_color='black', marker_line_width=1 if talhao_selecionado != "Visão Geral" else 0)
+        # Adicionar borda preta apenas na barra selecionada para dar mais destaque
+        fig.update_traces(
+            marker_line_color='black', 
+            marker_line_width=2 if talhao_selecionado != "Visão Geral" else 0
+        )
+
         st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
