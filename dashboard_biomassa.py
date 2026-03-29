@@ -343,7 +343,7 @@ try:
         # Criar o Gráfico
         fig = px.bar(
             df_zoom, 
-            x='fid', 
+            x='fid_str',  # <--- Mudamos de 'fid' para 'fid_str'
             y=col_exp,
             color='Destaque',
             color_discrete_map={
@@ -357,6 +357,7 @@ try:
         fig.update_layout(
             showlegend=False,
             height=450,
+            xaxis_type='category', # <--- ISSO GARANTE A COR: força o eixo a ser categórico
             xaxis_title="ID do Talhão",
             yaxis_title="% de Consumo",
             plot_bgcolor='rgba(0,0,0,0)',
