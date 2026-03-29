@@ -361,14 +361,44 @@ try:
             paper_bgcolor='rgba(0,0,0,0)',
             margin=dict(l=10, r=10, t=10, b=10)
         )
-
+#---------------------------------------------------------------------------------------------
         # Anotação e borda no selecionado
+        # if talhao_selecionado != "Visão Geral":
+            # valor_sel = df_zoom.loc[df_zoom['fid_str'] == id_selecionado_str, col_exp].values[0]
+            # fig_bar.add_annotation(
+                # x=id_selecionado_str, y=valor_sel, text="🎯 Selecionado",
+                # showarrow=True, arrowhead=2, ay=-40, bgcolor="#FAFF00"
+            # )
+            #----------------------------------------------------------------------------------
+        # Anotação Dinâmica que acompanha o Zoom
         if talhao_selecionado != "Visão Geral":
-            valor_sel = df_zoom.loc[df_zoom['fid_str'] == id_selecionado_str, col_exp].values[0]
-            fig_bar.add_annotation(
-                x=id_selecionado_str, y=valor_sel, text="🎯 Selecionado",
-                showarrow=True, arrowhead=2, ay=-40, bgcolor="#FAFF00"
-            )
+            # 1. Pegar o valor exato para o eixo Y
+            filtro_sel = df_zoom.loc[df_zoom['fid_str'] == id_selecionado_str, col_exp]
+            
+            if not filtro_sel.empty:
+                valor_sel = filtro_sel.values[0]
+                
+                # 2. Adicionar a anotação vinculada ao ID do talhão
+                fig_bar.add_annotation(
+                    x=id_selecionado_str,  # O ID exato no eixo X
+                    y=valor_sel,           # A altura exata da barra
+                    text="🎯 Selecionado",
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowsize=1,
+                    arrowwidth=2,
+                    arrowcolor="#000000",
+                    ax=0,
+                    ay=-40,                # Posição vertical (acima da barra)
+                    font=dict(color="black", size=12, family="Arial"),
+                    bgcolor="#FAFF00",     # Fundo Amarelo
+                    bordercolor="black",
+                    borderwidth=1,
+                    opacity=0.9
+                )
+
+        
+            #----------------------------------------------------------------------------------
             fig_bar.update_traces(marker_line_color="black", 
                                  marker_line_width=2, 
                                  selector=dict(name="Selecionado"))
